@@ -171,6 +171,20 @@ public class NettyClientServerCommunicationSystemServerSide extends SimpleChanne
 
 			mainChannel = f.channel();
 
+            /** AWARE **/
+            if (controller.getStaticConf().isUseWeights()) {
+                logger.info("thres-AWARE built_051022, Extensions: ");
+                logger.info("Use dynamic weight adjustments (AWARE): " + controller.getStaticConf().isUseDynamicWeights());
+                logger.info("Use Leader selection optimization: " + controller.getStaticConf().isUseLeaderSelection());
+                logger.info("Use WRITE-RESPONSE: " + controller.getStaticConf().isUseWriteResponse());
+                logger.info("Use DUMMY-PROPOSE: " + controller.getStaticConf().isUseDummyPropose());
+                logger.info("Use PROPOSE-RESPONSE: " + controller.getStaticConf().isUseProposeResponse());
+                logger.info("Monitoring overhead: " + controller.getStaticConf().getMonitoringOverhead());
+                logger.info("Re-Calculate after x consensus: " + controller.getStaticConf().getCalculationInterval());
+				logger.info("Calc Delay: " + controller.getStaticConf().getCalculationDelay());
+				logger.info("Opt goal " + controller.getStaticConf().getOptimizationGoal());
+            }
+
 		} catch (InterruptedException | UnknownHostException ex) {
 			logger.error("Failed to create Netty communication system", ex);
 		}
@@ -234,7 +248,7 @@ public class NettyClientServerCommunicationSystemServerSide extends SimpleChanne
 		if (requestReceiver == null)
 			logger.warn("Request receiver is still null!");
 		else
-			requestReceiver.requestReceived(sm);
+			requestReceiver.requestReceived(sm, true);
 	}
 
 	@Override
@@ -257,6 +271,7 @@ public class NettyClientServerCommunicationSystemServerSide extends SimpleChanne
 
 		// debugSessions();
 
+		rl.writeLock().lock();
 		Set s = sessionReplicaToClient.entrySet();
 		Iterator i = s.iterator();
 		while (i.hasNext()) {
@@ -268,6 +283,7 @@ public class NettyClientServerCommunicationSystemServerSide extends SimpleChanne
 				break;
 			}
 		}
+		rl.writeLock().unlock();
 
 		logger.debug("Session Closed, active clients=" + sessionReplicaToClient.size());
 	}

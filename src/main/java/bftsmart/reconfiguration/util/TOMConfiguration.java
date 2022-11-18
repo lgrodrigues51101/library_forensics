@@ -24,7 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class TOMConfiguration extends Configuration {
-    
+
     private Logger logger = LoggerFactory.getLogger(this.getClass());
 
     protected int n;
@@ -37,6 +37,7 @@ public class TOMConfiguration extends Configuration {
     protected int timeoutHighMark;
     protected int replyVerificationTime;
     protected int maxBatchSize;
+    protected int maxBatchSizeInBytes;
     protected int numberOfNonces;
     protected int inQueueSize;
     protected int outQueueSize;
@@ -48,6 +49,7 @@ public class TOMConfiguration extends Configuration {
     private int checkpointPeriod;
     private int globalCheckpointPeriod;
     private int useControlFlow;
+    private int maxRequestSize;
     private int[] initialView;
     private int ttpId;
     private boolean isToLog;
@@ -63,13 +65,37 @@ public class TOMConfiguration extends Configuration {
     private boolean fairbatch;
     private String bindAddress;
     private int clientInvokeOrderedTimeout;
-
     /* Tulio Ribeiro*/
     //private Boolean ssltls=true;
     private String ssltlsProtocolVersion;
     private String keyStoreFile;
     private String [] enabledCiphers;
 
+    private int delta;
+    private boolean useWeights;
+    private boolean tentative;
+
+    // AWARE Leader and weights configs
+    private int initialLeader;
+    private boolean useDynamicWeights;
+    private boolean useLeaderSelection;
+
+    // AWARE calc & monitoring overhead config
+    private int calculationInterval;
+
+    private int calculationDelay;
+    private double monitoringOverhead;
+    private double optimizationGoal;
+
+    // AWARE messages
+    private boolean useDummyPropose;
+    private boolean useProposeResponse;
+    private boolean useWriteResponse;
+    private int monitoringWindow;
+    private int synchronisationPeriod;
+    private int synchronisationDelay;
+
+    private boolean useforensics;
 
     /** Creates a new instance of TOMConfiguration */
     public TOMConfiguration(int processId, KeyLoader loader) {
@@ -161,6 +187,16 @@ public class TOMConfiguration extends Configuration {
                 maxBatchSize = Integer.parseInt(s);
             }
 
+            s = (String) configs.remove("system.totalordermulticast.maxBatchSizeInBytes");
+            if (s == null) {
+                maxBatchSizeInBytes = Integer.MAX_VALUE;
+            } else {
+                maxBatchSizeInBytes = Integer.parseInt(s);
+                if (maxBatchSizeInBytes < 1) {
+                    maxBatchSizeInBytes = Integer.MAX_VALUE;
+                }
+            }
+
             s = (String) configs.remove("system.totalordermulticast.replayVerificationTime");
             if (s == null) {
                 replyVerificationTime = 0;
@@ -215,6 +251,16 @@ public class TOMConfiguration extends Configuration {
                 useControlFlow = 0;
             } else {
                 useControlFlow = Integer.parseInt(s);
+            }
+
+            s = (String) configs.remove("system.communication.maxRequestSize");
+            if (s == null) {
+                maxRequestSize = Integer.MAX_VALUE;
+            } else {
+                maxRequestSize = Integer.parseInt(s);
+                if (maxRequestSize < 1) {
+                    maxRequestSize = Integer.MAX_VALUE;
+                }
             }
 
             s = (String) configs.remove("system.initial.view");
@@ -340,26 +386,79 @@ public class TOMConfiguration extends Configuration {
             } else {
                 bindAddress = s;
             }
-            
+
             s = (String) configs.remove("system.samebatchsize");
             if (s != null) {
                     sameBatchSize = Boolean.parseBoolean(s);
             } else {
                     sameBatchSize = false;
             }
-            
-            s = (String) configs.remove("system.totalordermulticast.fairbatch");
-            if (s != null) {
-                    fairbatch = Boolean.parseBoolean(s);
+
+
+            s = (String) configs.remove("system.useweights");
+            useWeights = (s != null) ? Boolean.parseBoolean(s) : false;
+
+            if (useWeights) {
+                delta = n - ( (isBFT ? 3*f : 2*f) + 1);
             } else {
-                    fairbatch = false;
+                delta = 0;
             }
-            
+
+            s = (String) configs.remove("system.tentative");
+            tentative = (s != null) ? Boolean.parseBoolean(s) : false;
+
+
+            /** AWARE **/
+
+            s = (String) configs.remove("system.initial.leader");
+            initialLeader = s != null ? Integer.parseInt(s) : 0;
+
+            s = (String) configs.remove("system.aware.monitoringWindow");
+            monitoringWindow = s != null ? Integer.parseInt(s) : 0;
+
+            s = (String) configs.remove("system.aware.useDynamicWeights");
+            useDynamicWeights = Boolean.parseBoolean(s);
+
+            s = (String) configs.remove("system.aware.useLeaderSelection");
+            useLeaderSelection = Boolean.parseBoolean(s);
+
+            s = (String) configs.remove("system.aware.calculationInterval");
+            calculationInterval = s != null ? Integer.parseInt(s) : 0;
+
+            s = (String) configs.remove("system.aware.calculationDelay");
+            calculationDelay = s != null ? Integer.parseInt(s) : calculationInterval / 5;
+
+            s = (String) configs.remove("system.aware.monitoringOverhead");
+            monitoringOverhead = s != null ? Double.parseDouble(s) : 0;
+
+            s = (String) configs.remove("system.aware.optimizationGoal");
+            optimizationGoal = s != null ? Double.parseDouble(s) : 1.05;
+
+            s = (String) configs.remove("system.aware.useDummyPropose");
+            useDummyPropose = Boolean.parseBoolean(s);
+
+            s = (String) configs.remove("system.aware.useProposeResponse");
+            useProposeResponse = Boolean.parseBoolean(s);
+
+            s = (String) configs.remove("system.aware.useWriteResponse");
+            useWriteResponse = Boolean.parseBoolean(s);
+
+            s = (String) configs.remove("system.aware.synchronisationPeriod");
+            synchronisationPeriod = s != null ? Integer.parseInt(s) : 20000;
+
+            s = (String) configs.remove("system.aware.synchronisationDelay");
+            synchronisationDelay = s != null ? Integer.parseInt(s) : 120000;
+
+            /** T-AWARE **/
+
+            s = (String) configs.remove("system.taware.useforensics");
+            useforensics = Boolean.parseBoolean(s);
+
             /**
-             * Tulio Ribeiro 
-             * 
+             * Tulio Ribeiro
+             *
              * SSL/TLS configuration parameters.
-             * Default values: 
+             * Default values:
              *  #	keyStoreFile = "EC_KeyPair_256.pkcs12";
              *  #	enabledCiphers = new String[] {"TLS_RSA_WITH_NULL_SHA256", "TLS_ECDHE_ECDSA_WITH_NULL_SHA"};
              *  #	ssltlsProtocolVersion = "TLSv1.2";
@@ -377,39 +476,37 @@ public class TOMConfiguration extends Configuration {
             if(s == null){
                 enabledCiphers = new String[] {"TLS_RSA_WITH_NULL_SHA256", "TLS_ECDHE_ECDSA_WITH_NULL_SHA"};
             }else{
-            	enabledCiphers = s.split(",");
-			}        
-            
-			s = (String) configs.remove("system.ssltls.protocol_version");
-			if (s == null) {
-				ssltlsProtocolVersion = "TLSv1.2";				
-			} else {
-				switch (s) {
-				case "SSLv3":
-					ssltlsProtocolVersion = "SSLv3";
-					break;
-				case "TLSv1":
-					ssltlsProtocolVersion = "TLSv1";
-					break;
-				case "TLSv1.1":
-					ssltlsProtocolVersion = "TLSv1.1";
-					break;
-				case "TLSv1.2":
-					ssltlsProtocolVersion = "TLSv1.2";
-					break;
-				default:
-					ssltlsProtocolVersion = "TLSv1.2";
-					break;
-				}
-			}
+                enabledCiphers = s.split(",");
+            }
 
-            s = (String) configs.remove("system.client.invokeOrderedTimeout");
+            s = (String) configs.remove("system.ssltls.protocol_version");
+            if (s == null) {
+                ssltlsProtocolVersion = "TLSv1.2";
+            } else {
+                switch (s) {
+                    case "SSLv3":
+                        ssltlsProtocolVersion = "SSLv3";
+                        break;
+                    case "TLSv1":
+                        ssltlsProtocolVersion = "TLSv1";
+                        break;
+                    case "TLSv1.1":
+                        ssltlsProtocolVersion = "TLSv1.1";
+                        break;
+                    case "TLSv1.2":
+                        ssltlsProtocolVersion = "TLSv1.2";
+                        break;
+                    default:
+                        ssltlsProtocolVersion = "TLSv1.2";
+                        break;
+                }
+            }
+s = (String) configs.remove("system.client.invokeOrderedTimeout");
             if (s == null) {
                 clientInvokeOrderedTimeout = 40;
             } else {
                 clientInvokeOrderedTimeout = Integer.parseInt(s);
             }
-
         } catch (Exception e) {
             logger.error("Could not parse system configuration file",e);
         }
@@ -472,6 +569,14 @@ public class TOMConfiguration extends Configuration {
     
     public int getMaxBatchSize() {
         return maxBatchSize;
+    }
+
+    /**
+     * The maximum size a batch of messages can have in bytes. This limit is useful for performance and
+     * memory limiting reasons when handling large requests.
+     */
+    public int getMaxBatchSizeInBytes() {
+        return maxBatchSizeInBytes;
     }
 
     public boolean isShutdownHookEnabled() {
@@ -559,48 +664,139 @@ public class TOMConfiguration extends Configuration {
         return useControlFlow;
     }
 
+    /**
+     * Maximum size in bytes a request from a client may have. Larger messages are discarded.
+     * This setting is useful when malicious clients are present.
+     */
+    public int getMaxRequestSize() {
+        return maxRequestSize;
+    }
+
     public boolean isBFT(){
-    	
     	return this.isBFT;
     }
 
     public int getNumRepliers() {
         return numRepliers;
     }
-    
-    public int getNumNettyWorkers() {
-        return numNettyWorkers;
-    }
-    
-    public boolean getSameBatchSize() {
-        return sameBatchSize;
-    }
-    
+
     public boolean getFairBatch() {
         return fairbatch;
     }
-    
+
+    public int getDelta() {
+        return delta;
+    }
+
+    public boolean getTentative() {
+        return tentative;
+    }
+
+    public int getNumNettyWorkers() {
+        return numNettyWorkers;
+    }
+
+    public boolean getSameBatchSize() {
+        return sameBatchSize;
+    }
+
     public String getBindAddress() {
         return bindAddress;
     }
 
     public int getClientInvokeOrderedTimeout() {
-        return clientInvokeOrderedTimeout;
+            return clientInvokeOrderedTimeout;
     }
 
     /**
      * Tulio Ribeiro ## SSL/TLS getters.
      * */
     public String getSSLTLSProtocolVersion() {
-		return ssltlsProtocolVersion;
-	}
-	
-	public String getSSLTLSKeyStore() {
-		return keyStoreFile; 
-	}
-	
-	public String[] getEnabledCiphers() {
-		return enabledCiphers;
-	}
+        return ssltlsProtocolVersion;
+    }
 
+    public String getSSLTLSKeyStore() {
+        return keyStoreFile;
+    }
+
+    public String[] getEnabledCiphers() {
+        return enabledCiphers;
+    }
+
+
+    public boolean isUseWeights() {
+        return useWeights;
+    }
+
+    public boolean isTentative() {
+        return tentative;
+    }
+
+    public int getInitialLeader() {
+        return initialLeader;
+    }
+
+    public boolean isUseDynamicWeights() {
+        return useDynamicWeights;
+    }
+
+    public int getCalculationInterval() {
+        return calculationInterval;
+    }
+
+    public int getCalculationDelay() {
+        return calculationDelay;
+    }
+
+    public double getMonitoringOverhead() {
+        return monitoringOverhead;
+    }
+
+    public boolean isUseDummyPropose() {
+        return useDummyPropose;
+    }
+
+    public boolean isUseProposeResponse() {
+        return useProposeResponse;
+    }
+
+    public boolean isUseWriteResponse() {
+        return useWriteResponse;
+    }
+
+    public int getMonitoringWindow() {
+        return this.monitoringWindow;
+    }
+
+    public boolean isUseLeaderSelection() {
+        return useLeaderSelection;
+    }
+
+    public double getOptimizationGoal() {
+        return optimizationGoal;
+    }
+
+    public void setOptimizationGoal(double optimizationGoal) {
+        this.optimizationGoal = optimizationGoal;
+    }
+
+    public int getSynchronisationPeriod() {
+        return synchronisationPeriod;
+    }
+
+    public void setSynchronisationPeriod(int synchronisationPeriod) {
+        this.synchronisationPeriod = synchronisationPeriod;
+    }
+
+    public int getSynchronisationDelay() {
+        return synchronisationDelay;
+    }
+
+    public void setSynchronisationDelay(int synchronisationDelay) {
+        this.synchronisationDelay = synchronisationDelay;
+    }
+
+    public boolean useForensics(){
+        return useforensics;
+    }
 }

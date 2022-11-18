@@ -26,6 +26,9 @@ import java.util.HashMap;
 import java.util.Set;
 
 import bftsmart.communication.ServerCommunicationSystem;
+import bftsmart.consensus.Consensus;
+import bftsmart.consensus.messages.ConsensusMessage;
+import bftsmart.consensus.messages.MessageFactory;
 import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.core.TOMLayer;
 import bftsmart.tom.core.messages.TOMMessage;
@@ -49,7 +52,7 @@ public class RequestsTimer {
     private long shortTimeout;
     private TreeSet<TOMMessage> watched = new TreeSet<TOMMessage>();
     private ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-    
+
     private boolean enabled = true;
     
     private ServerCommunicationSystem communication; // Communication system between replicas
@@ -168,9 +171,9 @@ public class RequestsTimer {
         }
         
         if (!pendingRequests.isEmpty()) {
-            
+
             logger.info("The following requests timed out: " + pendingRequests);
-            
+
             for (ListIterator<TOMMessage> li = pendingRequests.listIterator(); li.hasNext(); ) {
                 TOMMessage request = li.next();
                 if (!request.timeout) {
@@ -185,6 +188,13 @@ public class RequestsTimer {
             }
 
             if (!pendingRequests.isEmpty()) {
+                // leader timeout detected
+                // switch to safer config before leader change
+                //controller.switchToSaferConfig();
+                // cb: I guess the protocol switch would not be deterministic here, because requests can time out in only
+                // some specific replicas while they do not time out in others? We need to think of a better place to
+                // switch back
+                
                 logger.info("Attempting to start leader change for requests {}", pendingRequests);
                 //Logger.debug = true;
                 //tomLayer.requestTimeout(pendingRequests);

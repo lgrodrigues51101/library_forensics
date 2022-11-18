@@ -108,7 +108,9 @@ public final class ExecutionManager {
         //******* EDUARDO END **************//
         
         // Get initial leader
-        if (controller.getCurrentViewAcceptors().length > 0)
+        if (controller.getStaticConf().getInitialLeader() > 0)
+            currentLeader = controller.getStaticConf().getInitialLeader();
+        else if (controller.getCurrentViewAcceptors().length > 0)
             currentLeader = controller.getCurrentViewAcceptors()[0];
         else currentLeader = 0;
     }
@@ -265,12 +267,18 @@ public final class ExecutionManager {
                     
                     
                     addOutOfContextMessage(msg);
-                } else { //can process!
+                } else if(getConsensus(msg.getNumber()).getEpoch(msg.getEpoch(), controller).deserializedPropValue == null &&
+                        msg.getType() == MessageFactory.ACCEPT) { //if the propose message has not been processed yet, and a ACCEPT message is received -> out of context
+                    logger.debug("ACCEPT-Message for consensus " +
+                            msg.getNumber() + " received before PROPOSE, adding it to out of context set");
+                    addOutOfContextMessage(msg);
+                }else { //can process!
                     logger.debug("Message for consensus " + 
                             msg.getNumber() + " can be processed");
             
                     //Logger.debug = false;
                     canProcessTheMessage = true;
+
                 }
             }
         } else if ((lastConsId == -1 && msg.getNumber() >= (lastConsId + revivalHighMark)) || //recovered...
@@ -420,7 +428,7 @@ public final class ExecutionManager {
                     }
                 }
             }
-            
+
             if(controller.getStaticConf().isBFT()){
             	return ((countWrites > (2*controller.getCurrentViewF())) &&
             			(countAccepts > (2*controller.getCurrentViewF())));
@@ -502,5 +510,9 @@ public final class ExecutionManager {
     @Override
     public String toString() {
         return stoppedMsgs.toString();
+    }
+
+    public int getLastExec() {
+        return this.tomLayer != null ? tomLayer.getLastExec() : -1;
     }
 }

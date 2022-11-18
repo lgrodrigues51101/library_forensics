@@ -1,4 +1,4 @@
-/*
+/**
 Copyright (c) 2007-2013 Alysson Bessani, Eduardo Alchieri, Paulo Sousa, and the authors indicated in the @author tags
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,9 @@ limitations under the License.
 */
 package bftsmart.tom.core;
 
+import bftsmart.aware.decisions.AwareController;
 import bftsmart.consensus.Decision;
+import bftsmart.aware.monitoring.Monitor;
 import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.statemanagement.ApplicationState;
 import bftsmart.tom.MessageContext;
@@ -87,24 +89,20 @@ public final class DeliveryThread extends Thread {
 	 * @param dec Decision established from the consensus
 	 */
 	public void delivery(Decision dec) {
+		decidedLock.lock();
 
 		try {
-			decidedLock.lock();
 			decided.put(dec);
 
 			// clean the ordered messages from the pending buffer
 			TOMMessage[] requests = extractMessagesFromDecision(dec);
 			tomLayer.clientsManager.requestsOrdered(requests);
-
-			notEmptyQueue.signalAll();
-			decidedLock.unlock();
 			logger.debug("Consensus " + dec.getConsensusId() + " finished. Decided size=" + decided.size());
 		} catch (Exception e) {
-			logger.error("Could not insert decision into decided queue", e);
+			logger.error("Could not insert decision into decided queue and mark requests as delivered", e);
 		}
 
 		if (!containsReconfig(dec)) {
-
 			logger.debug("Decision from consensus " + dec.getConsensusId() + " does not contain reconfiguration");
 			// set this decision as the last one from this replica
 			tomLayer.setLastExec(dec.getConsensusId());
@@ -116,6 +114,9 @@ public final class DeliveryThread extends Thread {
 			logger.debug("Decision from consensus " + dec.getConsensusId() + " has reconfiguration");
 			lastReconfig = dec.getConsensusId();
 		}
+
+		notEmptyQueue.signalAll();
+		decidedLock.unlock();
 	}
 
 	private boolean containsReconfig(Decision dec) {
@@ -241,18 +242,21 @@ public final class DeliveryThread extends Thread {
 									  "\n\t\t###################################"
 									+ "\n\t\t    Ready to process operations    "
 									+ "\n\t\t###################################");
-					init = false;
-				}
-			}
+                    init = false;
+					/** AWARE **/
+					if (controller.getStaticConf().isUseDynamicWeights())
+						Monitor.getInstance(controller).startSync();
+					/** End AWARE **/
+                }
+            }
+            try {
+                ArrayList<Decision> decisions = new ArrayList<>();
+                decidedLock.lock();
+                if(decided.isEmpty()) {
+                    notEmptyQueue.await();
+                }
 
-			try {
-				ArrayList<Decision> decisions = new ArrayList<>();
-				decidedLock.lock();
-				if (decided.isEmpty()) {
-					notEmptyQueue.await();
-				}
-
-				logger.debug("Current size of the decided queue: {}", decided.size());
+                logger.debug("Current size of the decided queue: {}", decided.size());
 
 				if (controller.getStaticConf().getSameBatchSize()) {
 					decided.drainTo(decisions, 1);
@@ -266,6 +270,7 @@ public final class DeliveryThread extends Thread {
 					break;
 
 				if (decisions.size() > 0) {
+
 					TOMMessage[][] requests = new TOMMessage[decisions.size()][];
 					int[] consensusIds = new int[requests.length];
 					int[] leadersIds = new int[requests.length];
@@ -284,7 +289,7 @@ public final class DeliveryThread extends Thread {
 						cDecs[count] = cDec;
 
 						// cons.firstMessageProposed contains the performance counters
-						if (requests[count][0].equals(d.firstMessageProposed)) {
+						if (requests[count].length > 0 && requests[count][0].equals(d.firstMessageProposed)) {
 							long time = requests[count][0].timestamp;
 							long seed = requests[count][0].seed;
 							int numOfNonces = requests[count][0].numOfNonces;
@@ -295,6 +300,18 @@ public final class DeliveryThread extends Thread {
 						}
 
 						count++;
+
+						/**
+						 *  t-AWARE
+						 */
+						Monitor.getInstance(controller).handleMonitoringMessages(d);
+						// Audit should only happen here if storage is to big
+						if (controller.getStaticConf().useForensics()) {
+							AwareController.getInstance(controller, tomLayer.execManager).audit(d.getConsensusId());
+						}
+						AwareController.getInstance(controller, tomLayer.execManager).optimize(d.getConsensusId());
+						/**
+						 **/
 					}
 
 					Decision lastDecision = decisions.get(decisions.size() - 1);
@@ -365,7 +382,7 @@ public final class DeliveryThread extends Thread {
 		MessageContext msgCtx = new MessageContext(request.getSender(), request.getViewID(), request.getReqType(),
 				request.getSession(), request.getSequence(), request.getOperationId(), request.getReplyServer(),
 				request.serializedMessageSignature, System.currentTimeMillis(), 0, 0, regency, -1, -1, null, null,
-				false); // Since the request is unordered,
+				false, request.getIsMonitoringMessage()); // Since the request is unordered,
 		// there is no consensus info to pass
 
 		msgCtx.readOnly = true;
