@@ -411,7 +411,7 @@ public final class ThroughputLatencyServer extends DefaultRecoverable{
                                        "           --> TIME PASSED : " + time_passed + "s\n"+
                                        "#########################################################");
                     try {
-                        sleep(30000);
+                        sleep(50000);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }

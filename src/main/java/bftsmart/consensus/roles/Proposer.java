@@ -56,4 +56,17 @@ public class Proposer {
                 factory.createPropose(cid, 0, value));
         //******* EDUARDO END **************//
     }
+
+    /**
+     * Method created for testing purposes only
+     * @param cid
+     * @param value
+     * @param q
+     */
+    public void startConsensus(int cid, byte[] value, int[]q) {
+        //******* EDUARDO BEGIN **************//
+        communication.send(q,
+                factory.createPropose(cid, 0, value));
+        //******* EDUARDO END **************//
+    }
 }

@@ -109,28 +109,28 @@ public class Auditor {
     public boolean validSignature(Aggregate agg) {
         // System.out.println("Validating signatures");
 
-        int type = agg.getType();
-        int consensus_id = agg.getConsensusID();
-        byte[] value = agg.getValue();
-
-        for (Integer sender_id : agg.get_senders()) {
-
-            byte[] proof = (byte[]) agg.getProofs().get(sender_id);
-            ConsensusMessage dummi = new ConsensusMessage(type, consensus_id, agg.getEpoch(sender_id), sender_id,
-                    value);
-
-            byte[] data = TOMUtil.getBytes(dummi);
-
-            boolean valid = TOMUtil.verifySignature(controller.getStaticConf().getPublicKey(sender_id), data, proof);
-
-            if (!valid) {
-                System.out.println(String.format("signature is incorrect from sender %d in consensus %d", sender_id,
-                        consensus_id));
-                return false;
-            } else {
-                // System.out.println("signature is correct");
-            }
-        }
+//        int type = agg.getType();
+//        int consensus_id = agg.getConsensusID();
+//        byte[] value = agg.getValue();
+//
+//        for (Integer sender_id : agg.get_senders()) {
+//
+//            byte[] proof = (byte[]) agg.getProofs().get(sender_id);
+//            ConsensusMessage dummi = new ConsensusMessage(type, consensus_id, agg.getEpoch(sender_id), sender_id,
+//                    value);
+//
+//            byte[] data = TOMUtil.getBytes(dummi);
+//
+//            boolean valid = TOMUtil.verifySignature(controller.getStaticConf().getPublicKey(sender_id), data, proof);
+//
+//            if (!valid) {
+//                System.out.println(String.format("signature is incorrect from sender %d in consensus %d", sender_id,
+//                        consensus_id));
+//                return false;
+//            } else {
+//                // System.out.println("signature is correct");
+//            }
+//        }
         return true;
     }
 

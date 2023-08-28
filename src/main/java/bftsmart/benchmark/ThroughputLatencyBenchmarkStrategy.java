@@ -117,7 +117,7 @@ public class ThroughputLatencyBenchmarkStrategy implements IBenchmarkStrategy {
 
 				System.out.println("Starting clients");
 				clientsReadyCounter = new CountDownLatch(1 + clientsPerPod.length);
-				int clientId = numOfServers + 100;
+				int clientId = numOfServers + 10000;
 				WorkerCommands[] clientCommands = new WorkerCommands[1 + clientsPerPod.length];
 				clientCommands[0] = new WorkerCommands(
 						measurementClientId, new ProcessInfo[]{

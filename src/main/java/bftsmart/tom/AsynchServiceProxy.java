@@ -4,7 +4,6 @@ import bftsmart.communication.client.ReplyListener;
 import bftsmart.consensus.roles.Acceptor;
 import bftsmart.correctable.Consistency;
 import bftsmart.correctable.Correctable;
-import bftsmart.correctable.CorrectableSimple;
 import bftsmart.reconfiguration.ClientViewController;
 import bftsmart.reconfiguration.views.View;
 import bftsmart.tom.core.messages.TOMMessage;
@@ -12,9 +11,12 @@ import bftsmart.tom.core.messages.TOMMessageType;
 import bftsmart.tom.util.Extractor;
 import bftsmart.tom.util.KeyLoader;
 import bftsmart.tom.util.TOMUtil;
+
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Random;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +24,6 @@ import org.slf4j.LoggerFactory;
 /**
  * This class is an extension of 'ServiceProxy' that can waits for replies
  * asynchronously.
- *
  */
 public class AsynchServiceProxy extends ServiceProxy {
 
@@ -42,7 +43,7 @@ public class AsynchServiceProxy extends ServiceProxy {
         this(processId, null);
         init();
     }
-    
+
     /**
      * Constructor
      *
@@ -76,7 +77,7 @@ public class AsynchServiceProxy extends ServiceProxy {
      * @param loader          Used to load signature keys from disk
      */
     public AsynchServiceProxy(int processId, String configHome,
-            Comparator<byte[]> replyComparator, Extractor replyExtractor, KeyLoader loader) {
+                              Comparator<byte[]> replyComparator, Extractor replyExtractor, KeyLoader loader) {
 
         super(processId, configHome, replyComparator, replyExtractor, loader);
         init();
@@ -103,12 +104,11 @@ public class AsynchServiceProxy extends ServiceProxy {
 
     /**
      * This method asynchronously sends a request to the replicas.
-     * 
+     *
      * @param request       Request to be sent
      * @param targets       The IDs for the replicas to which to send the request
      * @param replyListener Callback object that handles reception of replies
      * @param reqType       Request type
-     * 
      * @return A unique identification for the request
      */
     public int invokeAsynchRequest(byte[] request, int[] targets, ReplyListener replyListener, TOMMessageType reqType) {
@@ -119,7 +119,7 @@ public class AsynchServiceProxy extends ServiceProxy {
      * Purges all information associated to the request.
      * This should always be invoked once enough replies are received and processed
      * by the ReplyListener callback.
-     * 
+     *
      * @param requestId A unique identification for a previously sent request
      */
     public void cleanAsynchRequest(int requestId) {
@@ -175,7 +175,7 @@ public class AsynchServiceProxy extends ServiceProxy {
 
                     if ((v = newView(reply.getContent())) != null
                             && !requestsAlias.containsKey(reply.getOperationId())) { // Deal with a system
-                                                                                     // reconfiguration
+                        // reconfiguration
                         TOMMessage[] replies = requestsReplies.get(reply.getOperationId());
 
                         int sameContent = 0; // TODO remove
@@ -190,7 +190,7 @@ public class AsynchServiceProxy extends ServiceProxy {
 
                             if ((replies[i] != null) && (i != pos || getViewManager().getCurrentViewN() == 1)
                                     && (reply.getReqType() != TOMMessageType.ORDERED_REQUEST
-                                            || Arrays.equals(replies[i].getContent(), reply.getContent()))) {
+                                    || Arrays.equals(replies[i].getContent(), reply.getContent()))) {
                                 sameContent++;
                                 totalVotes += getViewManager().getCurrentView().getWeight(i);
                             }
@@ -198,7 +198,7 @@ public class AsynchServiceProxy extends ServiceProxy {
 
                         if (sameContent >= Math.ceil((getViewManager().getCurrentViewN() + getViewManager().getCurrentViewF() + 1) / 2.0)
                                 //totalVotes >= replyQuorum
-                            && v.getId() > getViewManager().getCurrentViewId() ) {
+                                && v.getId() > getViewManager().getCurrentViewId()) {
 
                             logger.info("sameContent: " + sameContent);
                             logger.info("totalVotes: " + totalVotes);
@@ -265,33 +265,21 @@ public class AsynchServiceProxy extends ServiceProxy {
     }
 
     /**
-     *
      * @param targets
      * @param senderId
      * @return
      */
     private boolean contains(int[] targets, int senderId) {
-        for (int i = 0; i < targets.length; i++) {
-            if (targets[i] == senderId) {
+        for (int target : targets) {
+            if (target == senderId) {
                 return true;
             }
         }
         return false;
     }
 
-    /**
-     * Correctable method
-     */
-
-    // public CorrectableSimple invokeCorrectable(byte[] request){
-    // CorrectableSimple correctable = new
-    // CorrectableSimple(super.getViewManager());
-
-    // return correctable;
-    // }
-
-    public CorrectableSimple invokeCorrectable(byte[] request) {
-        CorrectableSimple correctable = new CorrectableSimple(super.getViewManager());
+    public Correctable invokeCorrectable(byte[] request) {
+        Correctable correctable = new Correctable(super.getViewManager());
 
         ClientViewController cViewController = super.getViewManager();
         int targets[] = super.getViewManager().getCurrentViewProcesses();
@@ -305,191 +293,37 @@ public class AsynchServiceProxy extends ServiceProxy {
         requestContext = new RequestContext(generateRequestId(reqType), generateOperationId(),
                 reqType, targets, System.currentTimeMillis(), new ReplyListener() {
 
-                    private int responses = 0;
-                    private double votes = 0.0;
-
-                    @Override
-                    public void reset() {
-                        System.out.println("Correctable reset()");
-                        responses = 0;
-                        votes = 0;
-                        correctable.reset();
-                    }
-
-                    @Override
-                    public void replyReceived(RequestContext context, TOMMessage reply) {
-
-                        responses++;
-                        votes += cViewController.getCurrentView().getWeight(reply.getSender());
-
-                        // System.out.print("Responses received so far: " + responses + ";\tTotal votes acumulated: " + votes);
-                        // System.out.println("update");
-                        correctable.update(context, reply, votes, responses);
-                        // System.out.printf("Votes = %f; Responses = %d\n", votes, responses);
-
-                        if (correctable.isFinal()) { // close after last level of consistency (can be lower than FINAL)
-                            cleanAsynchRequest(context.getOperationId()); // TODO do I need to define the last level of
-                                                                          // desired consistency to be able to define
-                                                                          // when to close? What if I want to close
-                                                                          // before FINAL consistency??
-                        }
-                    }
-                }, request);
-
-        try {
-            logger.debug("Storing request context for " + requestContext.getOperationId());
-            requestsContext.put(requestContext.getOperationId(), requestContext);
-            requestsReplies.put(requestContext.getOperationId(),
-                    new TOMMessage[super.getViewManager().getCurrentViewN()]);
-
-            sendMessageToTargets(request, requestContext.getReqId(), requestContext.getOperationId(), targets, reqType);
-
-        } finally {
-            canSendLock.unlock();
-        }
-        return correctable;
-    }
-
-    public Correctable invokeCorrectable(byte[] request, Consistency[] levels) {
-        Correctable correctable = new Correctable();
-
-        int targets[] = super.getViewManager().getCurrentViewProcesses();
-        logger.debug("Asynchronously sending request to " + Arrays.toString(targets));
-
-        RequestContext requestContext = null;
-        TOMMessageType reqType = TOMMessageType.ORDERED_REQUEST;
-
-        canSendLock.lock();
-
-        requestContext = new RequestContext(generateRequestId(reqType), generateOperationId(),
-                reqType, targets, System.currentTimeMillis(), new ReplyListener() {
-
-                    int responces = 0;
-                    double votes = 0.0;
-                    int level_index = 0;
-
-                    @Override
-                    public void reset() {
-                        responces = 0;
-                        votes = 0;
-                        level_index = 0;
-                    }
-
-                    @Override
-                    public void replyReceived(RequestContext context, TOMMessage reply) {
-                        responces++;
-                        int sender = reply.getSender();
-                        votes += getViewManager().getCurrentView().getWeight(sender);
-
-                        View view = getViewManager().getCurrentView();
-                        int delta = view.getDelta();
-                        int t = view.getF();
-                        double Vmax = 1.0 + (double) delta / (double) t;
-                        // System.out.println("Vmax = " + Vmax);
-                        int N = view.getN();
-                        int T = (N - 1) / 3;
-
-                        double q = calculateConsistencyQ(levels[level_index], (double) t, Vmax);
-
-                        if (votes >= q) {
-                            if (levels[level_index].equals(Consistency.FINAL)) {
-                                int needed_responses = N - t - 1;
-                                if (votes >= q && responces >= needed_responses) { // received weights votes and
-                                                                                  // confirmations
-                                    System.out.println("Received enouch replies and confirmations, executing Update");
-                                    correctable.update(context, reply);
-                                    level_index++;
-                                }
-                            } else {
-                                System.out.println("Received enouch replies, executing Update");
-                                correctable.update(context, reply);
-                                level_index++;
-                            }
-                        }
-                        if (level_index >= levels.length) { // close after last level of consistency (can be lower than
-                                                            // FINAL)
-                            cleanAsynchRequest(context.getOperationId());
-                            correctable.close(context, reply);
-                        }
-                    }
-                }, request);
-
-        try {
-            logger.debug("Storing request context for " + requestContext.getOperationId());
-            requestsContext.put(requestContext.getOperationId(), requestContext);
-            requestsReplies.put(requestContext.getOperationId(),
-                    new TOMMessage[super.getViewManager().getCurrentViewN()]);
-
-            sendMessageToTargets(request, requestContext.getReqId(), requestContext.getOperationId(), targets, reqType);
-
-        } finally {
-            canSendLock.unlock();
-        }
-        return correctable;
-    }
-
-
-    public long[] invokeCorrectableLatency(byte[] request) {
-        return this.invokeCorrectableLatency(request, new Consistency[]{Consistency.NONE, Consistency.WEAK, Consistency.LINE, Consistency.FINAL});
-    }
-    public long[] invokeCorrectableLatency(byte[] request, Consistency[] levels) {
-
-        long[] latency = new long[levels.length];
-        int targets[] = super.getViewManager().getCurrentViewProcesses();
-        logger.debug("Asynchronously sending request to " + Arrays.toString(targets));
-
-        RequestContext requestContext = null;
-        TOMMessageType reqType = TOMMessageType.ORDERED_REQUEST;
-
-        canSendLock.lock(); /** Critical Section **/
-        long start = System.nanoTime();
-        requestContext = new RequestContext(generateRequestId(reqType), generateOperationId(), reqType, targets, System.currentTimeMillis(), new ReplyListener() {
-
-            int responces = 0;
-            double votes = 0.0;
-            int level_index = 0;
+            private int responses = 0;
+            private double votes = 0.0;
 
             @Override
             public void reset() {
-                responces = 0;
+                System.out.println("Correctable reset()");
+                responses = 0;
                 votes = 0;
-                level_index = 0;
-                long[] latency = new long[levels.length];
+                correctable.reset();
             }
 
             @Override
             public void replyReceived(RequestContext context, TOMMessage reply) {
-                responces++;
-                View view = getViewManager().getCurrentView();
-                int sender = reply.getSender();
-                votes += view.getWeight(sender);
 
-                int delta = view.getDelta();
-                int t = view.getF();
-                double Vmax = 1.0 + (double) delta / (double) t;
-                // System.out.println("Vmax = " + Vmax);
-                int N = view.getN();
-                int T = (N - 1) / 3;
+                // TODO reply is view change
+                // TODO save replies and update the correctable only whit the value with most votes (now with every reply the correctable is updated. this in not correct since we need to check the amount of votes and replies for each value)
+                // TODO when we received several votes and final consistency was not possible, change correctable state to ERROR, client should then lauch a PANIC message
 
-                double q = calculateConsistencyQ(levels[level_index], (double) t, Vmax);
+                responses++;
+                votes += cViewController.getCurrentView().getWeight(reply.getSender());
 
-                if (votes >= q) {
-                    if (levels[level_index].equals(Consistency.FINAL)) {
-                        int needed_responses = N - t - 1;
-                        if (responces >= needed_responses) { // received weights votes and confirmations
-                            System.out.println("Received enouch replies and confirmations, executing Update");
-                            latency[level_index] = System.nanoTime() - start;
-                            level_index++;
-                        }
-                    } else {
-                        System.out.println("Received enouch replies, executing Update");
-                        latency[level_index] = System.nanoTime() - start;
-                        level_index++;
-                    }
-                }
-                if (level_index >= levels.length) { // close after last level of consistency (can be lower than
-                    // FINAL)
-                    cleanAsynchRequest(context.getOperationId());
+                // System.out.print("Responses received so far: " + responses + ";\tTotal votes acumulated: " + votes);
+                // System.out.println("update");
+                correctable.update(context, reply, votes, responses);
+                // System.out.printf("Votes = %f; Responses = %d\n", votes, responses);
+
+                if (correctable.isFinal()) { // close after last level of consistency (can be lower than FINAL)
+                    cleanAsynchRequest(context.getOperationId()); // TODO do I need to define the last level of
+                    // desired consistency to be able to define
+                    // when to close? What if I want to close
+                    // before FINAL consistency??
                 }
             }
         }, request);
@@ -501,28 +335,9 @@ public class AsynchServiceProxy extends ServiceProxy {
                     new TOMMessage[super.getViewManager().getCurrentViewN()]);
 
             sendMessageToTargets(request, requestContext.getReqId(), requestContext.getOperationId(), targets, reqType);
-
         } finally {
             canSendLock.unlock();
         }
-        return latency;
-    }
-
-    private double calculateConsistencyQ(Consistency level, double t, double Vmax) {
-        if (level.equals(Consistency.NONE)) {
-            return 1.0;
-        }
-        if (level.equals(Consistency.WEAK)) {
-            return t * Vmax + 1.0 + Acceptor.THRESHOLD;
-
-        } else if (level.equals(Consistency.LINE)) {
-            return 2.0 * t * Vmax + 1.0 + Acceptor.THRESHOLD;
-
-        } else if (level.equals(Consistency.FINAL)) {
-            // need further confirmations more than (N+2T-(t+1)+1)/2 responces
-            return 2.0 * t * Vmax + 1.0 + Acceptor.THRESHOLD;
-        }
-        System.out.println("Consistency problem, could not calculate Quorum votes");
-        return 0.0; // should never reach here
+        return correctable;
     }
 }

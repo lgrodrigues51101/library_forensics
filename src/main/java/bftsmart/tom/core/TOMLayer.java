@@ -45,10 +45,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
 import java.security.*;
-import java.util.HashMap;
-import java.util.NoSuchElementException;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -439,6 +436,34 @@ public final class TOMLayer extends Thread implements RequestReceiver {
         return bb.makeBatch(pendingRequests, numberOfNonces, System.currentTimeMillis(), controller.getStaticConf().getUseSignatures() == 1);
     }
 
+    public byte[] createBadPropose(Decision dec) {
+        // Retrieve a set of pending requests from the clients manager
+        RequestList pendingRequests = clientsManager.getPendingRequests();
+
+        logger.debug("Number of pending requets to propose in consensus {}: {}", dec.getConsensusId(), pendingRequests.size());
+
+        int numberOfMessages = pendingRequests.size(); // number of messages retrieved
+        int numberOfNonces = this.controller.getStaticConf().getNumberOfNonces(); // ammount of nonces to be generated
+
+        // for benchmarking
+        if (dec.getConsensusId() > -1) { // if this is from the leader change, it doesn't matter
+            dec.firstMessageProposed = pendingRequests.getFirst();
+            dec.firstMessageProposed.consensusStartTime = System.nanoTime();
+        }
+        dec.batchSize = numberOfMessages;
+
+        logger.debug("Creating a PROPOSE with " + numberOfMessages + " msgs");
+
+        RequestList bad_list = (RequestList) pendingRequests.clone();
+        TOMMessage badmessage = bad_list.getLast();
+        byte[] content = badmessage.getContent();
+        byte[] bad_content = new byte[content.length];
+        new Random().nextBytes(bad_content);
+        badmessage.setContent(bad_content);
+
+        return bb.makeBatch(bad_list, numberOfNonces, System.currentTimeMillis(), controller.getStaticConf().getUseSignatures() == 1);
+    }
+
 
     /**
      * This is the main code for this thread. It basically waits until this
@@ -498,8 +523,8 @@ public final class TOMLayer extends Thread implements RequestReceiver {
 
             //START t-AWARE:  block untils t-AWARE reconfiguration completes
             reconfigurationLock.lock();
-            if ( (getLastExec() % controller.getStaticConf().getCalculationInterval()) == controller.getStaticConf().getCalculationDelay()
-                    && getLastExec() >=  controller.getStaticConf().getCalculationInterval() + controller.getStaticConf().getCalculationDelay()
+            if ((getLastExec() % controller.getStaticConf().getCalculationInterval()) == controller.getStaticConf().getCalculationDelay()
+                    && getLastExec() >= controller.getStaticConf().getCalculationInterval() + controller.getStaticConf().getCalculationDelay()
                     && getLastExec() > AwareController.getInstance(controller, execManager).getLastReconfigurationCID()
             ) {
                 logger.debug("There may be a reconfiguration. Waiting for this to complete");
@@ -508,7 +533,7 @@ public final class TOMLayer extends Thread implements RequestReceiver {
             }
             reconfigurationLock.unlock();
             if (execManager.getCurrentLeader() != this.controller.getStaticConf().getProcessId()) {
-              continue;
+                continue;
             }
             //END t-AWARE:  block untils t-AWARE reconfiguration completes
 
@@ -566,7 +591,21 @@ public final class TOMLayer extends Thread implements RequestReceiver {
 
                 }
                 logger.debug("I am the leader and start consensus");
-                execManager.getProposer().startConsensus(execId, createPropose(dec));
+//                if (dec.getConsensusId() == 100) { //lr: at consensus 100 try to equivocate
+////                    System.out.println("Equivocation start!");
+////
+//////                    Decision dec2 = new Decision(dec.getConsensusId());
+//////                    dec2.setDecisionEpoch(dec.getDecisionEpoch());
+//////                    dec2.setRegency(dec.getRegency());
+//////                    dec2.setLeader(dec.getLeader());
+////
+////                    // faulty replicas are 0 and 1 (0 should be the leader)
+////                    int[] q1 = {0, 1, 2, 3};
+////                    int[] q2 = {0, 1, 4, 5, 6};
+////                    execManager.getProposer().startConsensus(execId, createBadPropose(dec), q1);
+////                    execManager.getProposer().startConsensus(execId, createPropose(dec), q2);
+//                } else
+                    execManager.getProposer().startConsensus(execId, createPropose(dec));
             }
         }
         logger.info("TOMLayer stopped.");

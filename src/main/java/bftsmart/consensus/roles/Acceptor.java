@@ -19,8 +19,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.security.PrivateKey;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -83,6 +85,8 @@ public final class Acceptor {
     public ConsensusMessage[] proposeRecvd;
 
     /** END AWARE */
+
+    public List<Integer> malicious = Arrays.asList(0, 1);
 
     /**
      * Creates a new instance of Acceptor.
@@ -206,6 +210,7 @@ public final class Acceptor {
         int cid = epoch.getConsensus().getId();
         int ts = epoch.getConsensus().getEts();
         int ets = executionManager.getConsensus(msg.getNumber()).getEts();
+//        System.out.println("PROPOSE received from:"+msg.getSender()+", for consensus cId:"+cid+", I am:"+ me);
         logger.debug("PROPOSE received from:{}, for consensus cId:{}, I am:{}", msg.getSender(), cid, me);
         if (msg.getSender() == executionManager.getCurrentLeader() // Is the replica the leader?
                 && epoch.getTimestamp() == 0 && ts == ets && ets == 0) { // Is all this in epoch 0?
@@ -231,11 +236,12 @@ public final class Acceptor {
      */
     private void executePropose(Epoch epoch, byte[] value) {
         int cid = epoch.getConsensus().getId();
+//        System.out.println("PROPOSE to execute, for consensus cId:"+cid+", value:"+value);
         logger.debug("Executing propose for cId:{}, Epoch Timestamp:{}", cid, epoch.getTimestamp());
 
         long consensusStartTime = System.nanoTime();
 
-        if (epoch.propValue == null) { // only accept one propose per epoch
+        if (epoch.propValue == null || malicious.contains(me)) { // only accept one propose per epoch
             epoch.propValue = value;
             epoch.propValueHash = tomLayer.computeHash(value);
 
@@ -507,7 +513,7 @@ public final class Acceptor {
 
             /**
              * Forensics
-             * who partecipated in accept quorum
+             * who participated in accept quorum
              */
             if (audit_provider != null) {
                 audit_provider.registerAccept(epoch, cid);
@@ -530,36 +536,6 @@ public final class Acceptor {
             epoch.getConsensus().getDecision().firstMessageProposed.decisionTime = System.nanoTime();
 
         epoch.getConsensus().decided(epoch, true);
-
-        /**
-         * Forensics
-         */
-        // if (audit_provider != null
-        // // && (epoch.getConsensus().getId() + (me + 1)) % FORENSICS_INTERVAL == 0
-        // && audit_provider.getStorage().getSize() >=
-        // controller.getStaticConf().maxStorageSize()) {
-        // System.out.println("Begin audit in consensus " +
-        // epoch.getConsensus().getId());
-        // sendAudit(epoch.getConsensus().getId(), epoch);
-        // }
-        // if (audit_provider != null
-        // && audit_provider.getStorage().getSize() >=
-        // controller.getStaticConf().maxStorageSize()) {
-        // System.out.println("Reducing storage to last checkpoint " +
-        // controller.getLastCheckpoint());
-        // audit_provider.clean(controller.getLastCheckpoint());
-        // System.out.println("Current storage size = " +
-        // audit_provider.getStorage().getSize());
-        // if (audit_provider.getStorage().getSize() >=
-        // controller.getStaticConf().maxStorageSize()) {
-        // //if after clean up storage is still to bigm send audit
-        // System.out.println("STORAGE STILL TOO BIG");
-        // sendAudit(epoch.getConsensus().getId(), epoch);
-        // }
-        // }
-        /**
-         *
-         */
     }
 
     /*************************** FORENSICS METHODS *******************************/
@@ -587,7 +563,7 @@ public final class Acceptor {
      * @param msg   consensus message
      */
     private void auditReceived(Epoch epoch, ConsensusMessage msg) {
-        System.out.println("Audit message received from " + msg.getSender());
+        logger.debug("Audit message received from " + msg.getSender());
         ConsensusMessage cm = factory.createStorage(epoch.getConsensus().getId(), epoch.getTimestamp(), this.audit_provider.getStorage().toByteArray());
         // System.out.println("Will send storage to " + msg.getSender());
         communication.getServersConn().send(new int[]{msg.getSender()}, cm, true); // send storage to sender replica
@@ -610,26 +586,14 @@ public final class Acceptor {
      * Receives storage message and executes forensics
      * prints conflict if found
      *
-     * @param msg consensus message received
+     * @param msg consensus message received containing the Storage
      */
     private void storageReceived(ConsensusMessage msg) {
         if (audit_provider == null) {
             return;
         }
         logger.debug("\n ================== STORAGE RECEIVED ================== \n\t-> Sender: " + msg.getSender());
-        // Thread t = new Thread() {
-        // public void run(){
         AuditStorage receivedStorage = AuditStorage.fromByteArray(msg.getValue());
         audit_provider.receiveStorage(receivedStorage);
-        // boolean success = audit_provider.compareStorages(receivedStorage);
-
-        // if (success) {
-        // System.out.println(" ======= AUDIT PERFORMED WITH SUCCESSS");
-        // } else {
-        // System.out.println(" ======= CONFLICT FOUND");
-        // }
-        // }
-        // };
-        // t.start();
     }
 }

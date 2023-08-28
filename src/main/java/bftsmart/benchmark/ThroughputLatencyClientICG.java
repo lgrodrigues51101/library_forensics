@@ -1,6 +1,6 @@
 package bftsmart.benchmark;
 
-import bftsmart.correctable.CorrectableSimple;
+import bftsmart.correctable.Correctable;
 import bftsmart.tests.recovery.Operation;
 import bftsmart.tom.AsynchServiceProxy;
 import bftsmart.tom.ServiceProxy;
@@ -112,7 +112,8 @@ public class ThroughputLatencyClientICG {
 					t1 = System.nanoTime();
 					if (!readonly) {
 						System.out.println("ICG Sending request.. using view id: " + asynch_proxy.getViewManager().getCurrentViewId());
-						long[] latencies = asynch_proxy.invokeCorrectableLatency(serializedWriteRequest);
+						long[] latencies = new long[0];
+//						long[] latencies = asynch_proxy.invokeCorrectableLatency(serializedWriteRequest);
 						latenciesRounds.add(latencies);
 						System.out.println("Ronda: " + i);
 

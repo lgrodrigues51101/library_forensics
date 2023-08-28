@@ -107,12 +107,28 @@ public class Decision {
         return value;
     }
 
+    /**
+     * This methos was created for testing purposes only
+     * @param new_value
+     */
+    public void setValue(byte[] new_value){
+        value = new_value;
+    }
+
     public TOMMessage[] getDeserializedValue() {
         while (deserializedValue == null) {
             waitForPropose();
             deserializedValue = decisionEpoch.deserializedPropValue;
         }
         return deserializedValue;
+    }
+
+    /**
+     * This methos was created for testing purposes only
+     * @param new_value
+     */
+    public void setDeserializedValue(TOMMessage[] new_value){
+        deserializedValue = new_value;
     }
 
     /**

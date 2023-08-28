@@ -117,7 +117,7 @@ public class AuditProvider {
     }
 
     public void clean(int cid) {
-        logger.info(" ======= Storage clean until " + cid + " ======= ");
+        logger.debug(" ======= Storage clean until " + cid + " ======= ");
         storage.removeProofsUntil(cid); // garbage collection for unecessary proofs
         if (storage.getSize() < audit_reps.size()) {
             audit_reps.clear(); // probably not the best way to clean this map

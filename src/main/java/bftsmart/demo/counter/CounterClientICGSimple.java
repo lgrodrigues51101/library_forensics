@@ -21,7 +21,7 @@ import java.io.DataOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 
-import bftsmart.correctable.CorrectableSimple;
+import bftsmart.correctable.Correctable;
 import bftsmart.tom.AsynchServiceProxy;
 
 /**
@@ -53,7 +53,7 @@ public class CounterClientICGSimple {
 
                 System.out.printf("Invocation %d : \n", i);
 
-                CorrectableSimple cor = counterProxy.invokeCorrectable(out.toByteArray());
+                Correctable cor = counterProxy.invokeCorrectable(out.toByteArray());
 
                 // System.out.println("\tCorrectable None consistency: value = "
                 //         + new DataInputStream(new ByteArrayInputStream(cor.getValueNoneConsistency())).readInt());

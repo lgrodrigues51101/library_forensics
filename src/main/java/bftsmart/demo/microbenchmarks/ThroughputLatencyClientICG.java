@@ -1,27 +1,26 @@
 /**
-Copyright (c) 2007-2013 Alysson Bessani, Eduardo Alchieri, Paulo Sousa, and the authors indicated in the @author tags
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+ * Copyright (c) 2007-2013 Alysson Bessani, Eduardo Alchieri, Paulo Sousa, and the authors indicated in the @author tags
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package bftsmart.demo.microbenchmarks;
 
 import java.io.IOException;
 
-import bftsmart.correctable.CorrectableSimple;
 import bftsmart.tom.AsynchServiceProxy;
-import bftsmart.tom.ServiceProxy;
 import bftsmart.tom.util.Storage;
 import bftsmart.tom.util.TOMUtil;
+
 import java.io.FileWriter;
 import java.nio.ByteBuffer;
 import java.security.InvalidKeyException;
@@ -44,6 +43,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import bftsmart.correctable.Correctable;
+
 /**
  * Example client that updates a BFT replicated service (a counter).
  *
@@ -59,7 +60,7 @@ public class ThroughputLatencyClientICG {
      * "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgXa3mln4anewXtqrM" +
      * "hMw6mfZhslkRa/j9P790ToKjlsihRANCAARnxLhXvU4EmnIwhVl3Bh0VcByQi2um" +
      * "9KsJ/QdCDjRZb1dKg447voj5SZ8SSZOUglc/v8DJFFJFTfygjwi+27gz";
-     * 
+     *
      * public static String pubKey =
      * "MIICNjCCAd2gAwIBAgIRAMnf9/dmV9RvCCVw9pZQUfUwCgYIKoZIzj0EAwIwgYEx" +
      * "CzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFAYDVQQHEw1TYW4g" +
@@ -96,8 +97,8 @@ public class ThroughputLatencyClientICG {
                 try {
                     f = new FileWriter("./latencies_" + initId + ".txt");
                     while (true) {
-
                         f.write(latencies.take());
+                        f.flush();
                     }
 
                 } catch (IOException | InterruptedException ex) {
@@ -145,9 +146,29 @@ public class ThroughputLatencyClientICG {
             }
 
             System.out.println("Launching client " + (initId + i));
-            clients[i] = new ThroughputLatencyClientICG.Client(initId + i, numberOfOps, requestSize, interval, readOnly,
-                    verbose, s);
+            clients[i] = new ThroughputLatencyClientICG.Client(initId + i, numberOfOps, requestSize, interval,
+                    readOnly, verbose, s);
         }
+
+        Thread clock = new Thread(){ // print time each 30s
+            @Override
+            public void run() {
+                long initTime = System.currentTimeMillis();
+                long time_passed = 0;
+                while (time_passed < 4000) {
+                    time_passed = (System.currentTimeMillis()-initTime)/1000;
+                    System.out.println("\n#########################################################\n"+
+                                        "           --> TIME PASSED : " + time_passed + "s\n"+
+                                        "#########################################################");
+                    try {
+                        sleep(50000);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+        clock.start();
 
         ExecutorService exec = Executors.newFixedThreadPool(clients.length);
         Collection<Future<?>> tasks = new LinkedList<>();
@@ -185,7 +206,7 @@ public class ThroughputLatencyClientICG {
         int rampup = 1000;
 
         public Client(int id, int numberOfOps, int requestSize, int interval, boolean readOnly, boolean verbose,
-                int sign) {
+                      int sign) {
             super("Client " + id);
 
             this.id = id;
@@ -238,7 +259,7 @@ public class ThroughputLatencyClientICG {
                 this.request = buffer.array();
 
             } catch (NoSuchAlgorithmException | SignatureException | NoSuchProviderException | InvalidKeyException
-                    | InvalidKeySpecException ex) {
+                     | InvalidKeySpecException ex) {
                 ex.printStackTrace();
                 System.exit(0);
             }
@@ -251,6 +272,8 @@ public class ThroughputLatencyClientICG {
 
             int req = 0;
 
+            long initial_time = System.nanoTime();
+
             for (int i = 0; i < numberOfOps / 2; i++, req++) {
                 if (verbose)
                     System.out.print("Sending req " + req + "...");
@@ -260,16 +283,35 @@ public class ThroughputLatencyClientICG {
                 byte[] reply = null;
                 if (readOnly)
                     reply = proxy.invokeUnordered(request);
-                else
-                    reply = proxy.invokeOrdered(request);
-                long latency = System.nanoTime() - last_send_instant;
+                else {
+                    Correctable cor = proxy.invokeCorrectable(request);
+                    cor.getValueNoneConsistency();
+                    long nonelatency = System.nanoTime() - last_send_instant;
+                    cor.getValueWeakConsistency();
+                    long weaklatency = System.nanoTime() - last_send_instant;
+                    cor.getValueLineConsistency();
+                    long linelatency = System.nanoTime() - last_send_instant;
+                    cor.getValueFinalConsistency();
+                    long finallatency = System.nanoTime() - last_send_instant;
+                    long final_time = (last_send_instant - initial_time) / 1000000000;
 
-                try {
-                    if (reply != null)
-                        latencies.put(id + "\t" + System.currentTimeMillis() + "\t" + latency + "\n");
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
+                    try {
+                        latencies.put(id + "; t: " + final_time + " s; None: " + nonelatency / 1000000 + " ms; Weak: " + weaklatency / 1000000 + " ms; Strong: " + linelatency / 1000000
+                                + " ms; Final: " + finallatency / 1000000 + " ms\n");
+                    } catch (InterruptedException ex) {
+                        ex.printStackTrace();
+                    }
                 }
+
+                // long latency = System.currentTimeMillis() - last_send_instant;
+
+                // try {
+                // if (reply != null)
+                // latencies.put(id + "\t" + System.currentTimeMillis() + "\t" + latency +
+                // "\n");
+                // } catch (InterruptedException ex) {
+                // ex.printStackTrace();
+                // }
 
                 if (verbose)
                     System.out.println(" sent!");
@@ -283,7 +325,8 @@ public class ThroughputLatencyClientICG {
                     if (interval > 0) {
                         Thread.sleep(interval);
                     }
-                    if (interval < 0) { // if interval negative, use it as upper limit for a randomized interval
+                    if (interval < 0) { // if interval negative, use it as upper limit for a
+                        // randomized interval
                         try { // so wait between 0ms and interval ms
                             double waitTime = Math.random() * interval * -1;
                             System.out.println("waiting for " + waitTime + " ms");
@@ -302,52 +345,78 @@ public class ThroughputLatencyClientICG {
                 }
             }
 
-            Storage st = new Storage(numberOfOps / 2);
+            // try
+
+            // {
+            System.out.println("Warm up complete after " + (System.nanoTime() - initial_time) / 1000000000 + " s");
+            //Thread.sleep(10000);
+            // } catch (InterruptedException e) {
+            //     e.printStackTrace();
+            // }
+
+            // FileWriter f = null;
+            // try {
+            // f = new FileWriter("./latencies_" + initId + ".txt");
+            // } catch (IOException e) {
+            // e.printStackTrace();
+            // }
+
             Storage nonest = new Storage(numberOfOps / 2);
             Storage weakst = new Storage(numberOfOps / 2);
             Storage strongst = new Storage(numberOfOps / 2);
             Storage finalst = new Storage(numberOfOps / 2);
 
-            System.out.println("Executing experiment for " + numberOfOps / 2 + " ops");
+            System.out.println("Executing experiment for " + numberOfOps / 2 + " ops after "
+                    + (System.nanoTime() - initial_time) + " us of execution");
+
+            // long ex_initial_time = System.nanoTime();
 
             for (int i = 0; i < numberOfOps / 2; i++, req++) {
                 long last_send_instant = System.nanoTime();
                 if (verbose)
                     System.out.print(this.id + " // Sending req " + req + "...");
 
-                if (readOnly)
+                if (readOnly) {
                     proxy.invokeUnordered(request);
-                else {
-                    CorrectableSimple cor = proxy.invokeCorrectable(request);
-                    cor.getValueNoneConsistency();
                     long latency = System.nanoTime() - last_send_instant;
-                    nonest.store(latency);
-
+                    try {
+                        latencies.put(
+                                id + "\t" + System.nanoTime() + "\t" + latency + " us\n");
+                    } catch (InterruptedException ex) {
+                        ex.printStackTrace();
+                    }
+                } else {
+                    Correctable cor = proxy.invokeCorrectable(request);
+                    cor.getValueNoneConsistency();
+                    long nonelatency = System.nanoTime() - last_send_instant;
+                    nonest.store(nonelatency);
                     cor.getValueWeakConsistency();
-                    latency = System.nanoTime() - last_send_instant;
-                    weakst.store(latency);
-
+                    long weaklatency = System.nanoTime() - last_send_instant;
+                    weakst.store(weaklatency);
                     cor.getValueLineConsistency();
-                    latency = System.nanoTime() - last_send_instant;
-                    strongst.store(latency);
-
+                    long linelatency = System.nanoTime() - last_send_instant;
+                    strongst.store(linelatency);
                     cor.getValueFinalConsistency();
-                    latency = System.nanoTime() - last_send_instant;
-                    finalst.store(latency);
+                    long finallatency = System.nanoTime() - last_send_instant;
+                    finalst.store(finallatency);
+                    // long final_time = (last_send_instant - ex_initial_time) / 1000000000;
+                    long final_time = (last_send_instant - initial_time) / 1000000000;
+
+                    try {
+                        latencies.put(id + "; t: " + final_time + " s; None: " + nonelatency / 1000000
+                                + " ms; Weak: " + weaklatency / 1000000 + " ms; Strong: " + linelatency / 1000000
+                                + " ms; Final: " + finallatency / 1000000 + " ms\n");
+                    } catch (InterruptedException ex) {
+                        ex.printStackTrace();
+                    } // catch (IOException e) {
+                    // // TODO Auto-generated catch block
+                    // e.printStackTrace();
+                    // }
                 }
 
-                // try {
-                // latencies.put(id + "\t" + System.currentTimeMillis() + "\t" + latency +
-                // "\n");
-                // } catch (InterruptedException ex) {
-                // ex.printStackTrace();
-                // }
-
-                // if (verbose) System.out.println(this.id + " // sent!");
-                // st.store(latency);
-
+                if (verbose)
+                    System.out.println(this.id + " // sent!");
                 try {
-
                     // sleeps interval ms before sending next request
                     if (interval > 0) {
 
@@ -373,110 +442,32 @@ public class ThroughputLatencyClientICG {
             }
 
             if (id == initId) {
-                // System.out.println(this.id + " // Average time for " + numberOfOps / 2 + "
-                // executions (-10%) = " + st.getAverage(true) / 1000 + " us ");
-                // System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2
-                // + " executions (-10%) = " + st.getDP(true) / 1000 + " us ");
-                // System.out.println(this.id + " // Average time for " + numberOfOps / 2 + "
-                // executions (all samples) = " + st.getAverage(false) / 1000 + " us ");
-                // System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2
-                // + " executions (all samples) = " + st.getDP(false) / 1000 + " us ");
-                // System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + "
-                // executions (all samples) = " + st.getMax(false) / 1000 + " us ");
-                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (-10%) = "
-                        + nonest.getAverage(true) / 1000000 + " ms (None consistency)");
-                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (-10%) = "
-                        + nonest.getDP(true) / 1000000 + " ms (None consistency)");
-                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (all samples) = "
-                        + nonest.getAverage(false) / 1000000 + " ms (None consistency)");
-                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2
-                        + " executions (all samples) = " + nonest.getDP(false) / 1000000 + " ms (None consistency)");
-                System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + " executions (all samples) = "
-                        + nonest.getMax(false) / 1000000 + " ms (None consistency)");
+                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (-10%) = " + nonest.getAverage(true) / 1000000 + " ms (None consistency)");
+                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (-10%) = " + nonest.getDP(true) / 1000000 + " ms (None consistency)");
+                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (all samples) = " + nonest.getAverage(false) / 1000000 + " ms (None consistency)");
+                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (all samples) = " + nonest.getDP(false) / 1000000 + " ms (None consistency)");
+                System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + " executions (all samples) = " + nonest.getMax(false) / 1000000 + " ms (None consistency)");
 
-                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (-10%) = "
-                        + weakst.getAverage(true) / 1000000 + " ms (Weak consistency)");
-                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (-10%) = "
-                        + weakst.getDP(true) / 1000000 + " ms (Weak consistency)");
-                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (all samples) = "
-                        + weakst.getAverage(false) / 1000000 + " ms (Weak consistency)");
-                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2
-                        + " executions (all samples) = " + weakst.getDP(false) / 1000000 + " ms (Weak consistency)");
-                System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + " executions (all samples) = "
-                        + weakst.getMax(false) / 1000000 + " ms (Weak consistency)");
+                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (-10%) = " + weakst.getAverage(true) / 1000000 + " ms (Weak consistency)");
+                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (-10%) = " + weakst.getDP(true) / 1000000 + " ms (Weak consistency)");
+                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (all samples) = " + weakst.getAverage(false) / 1000000 + " ms (Weak consistency)");
+                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (all samples) = " + weakst.getDP(false) / 1000000 + " ms (Weak consistency)");
+                System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + " executions (all samples) = " + weakst.getMax(false) / 1000000 + " ms (Weak consistency)");
 
-                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (-10%) = "
-                        + strongst.getAverage(true) / 1000000 + " ms (Strong consistency)");
-                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (-10%) = "
-                        + strongst.getDP(true) / 1000000 + " ms (Strong consistency)");
-                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (all samples) = "
-                        + strongst.getAverage(false) / 1000000 + " ms (Strong consistency)");
-                System.out.println(
-                        this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (all samples) = "
-                                + strongst.getDP(false) / 1000000 + " ms (Strong consistency)");
-                System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + " executions (all samples) = "
-                        + strongst.getMax(false) / 1000000 + " ms (Strong consistency)");
+                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (-10%) = " + strongst.getAverage(true) / 1000000 + " ms (Strong consistency)");
+                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (-10%) = " + strongst.getDP(true) / 1000000 + " ms (Strong consistency)");
+                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (all samples) = " + strongst.getAverage(false) / 1000000 + " ms (Strong consistency)");
+                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (all samples) = " + strongst.getDP(false) / 1000000 + " ms (Strong consistency)");
+                System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + " executions (all samples) = " + strongst.getMax(false) / 1000000 + " ms (Strong consistency)");
 
-                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (-10%) = "
-                        + finalst.getAverage(true) / 1000000 + " ms (Final consistency)");
-                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (-10%) = "
-                        + finalst.getDP(true) / 1000000 + " ms (Final consistency)");
-                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (all samples) = "
-                        + finalst.getAverage(false) / 1000000 + " ms (Final consistency)");
-                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2
-                        + " executions (all samples) = " + finalst.getDP(false) / 1000000 + " ms (Final consistency)");
-                System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + " executions (all samples) = "
-                        + finalst.getMax(false) / 1000000 + " ms (Final consistency)");
+                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (-10%) = " + finalst.getAverage(true) / 1000000 + " ms (Final consistency)");
+                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (-10%) = " + finalst.getDP(true) / 1000000 + " ms (Final consistency)");
+                System.out.println(this.id + " // Average time for " + numberOfOps / 2 + " executions (all samples) = " + finalst.getAverage(false) / 1000000 + " ms (Final consistency)");
+                System.out.println(this.id + " // Standard desviation for " + numberOfOps / 2 + " executions (all samples) = " + finalst.getDP(false) / 1000000 + " ms (Final consistency)");
+                System.out.println(this.id + " // Maximum time for " + numberOfOps / 2 + " executions (all samples) = " + finalst.getMax(false) / 1000000 + " ms (Final consistency)");
             }
 
-            System.out.println("Finished! Continue to send operations");
-
-            for (int i = 0; i < 2 * numberOfOps; i++, req++) {
-                long last_send_instant = System.nanoTime();
-                if (verbose)
-                    System.out.print(this.id + " // Sending req " + req + "...");
-
-                if (readOnly)
-                    proxy.invokeUnordered(request);
-                else
-                    proxy.invokeOrdered(request);
-                long latency = System.nanoTime() - last_send_instant;
-
-                try {
-                    latencies.put(id + "\t" + System.currentTimeMillis() + "\t" + latency + "\n");
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
-                }
-
-                if (verbose)
-                    System.out.println(this.id + " // sent!");
-                st.store(latency);
-
-                try {
-
-                    // sleeps interval ms before sending next request
-                    if (interval > 0) {
-
-                        Thread.sleep(interval);
-                    }
-                    if (interval < 0) { // if interval negative, use it as upper limit for a randomized interval
-
-                        double waitTime = Math.random() * interval * -1;
-                        System.out.println("waiting for " + waitTime + " ms");
-                        Thread.sleep(Math.round(waitTime));
-                    }
-                    if (this.rampup > 0) {
-                        Thread.sleep(this.rampup);
-                    }
-                    this.rampup -= 100;
-
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
-                }
-
-                if (verbose && (req % 1000 == 0))
-                    System.out.println(this.id + " // " + req + " operations sent!");
-            }
+            System.out.println("Finished!");
 
             proxy.close();
         }

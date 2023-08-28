@@ -21,6 +21,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.StringTokenizer;
 
+import bftsmart.aware.decisions.AwareController;
 import bftsmart.forensic.AuditProvider;
 import bftsmart.reconfiguration.views.View;
 import bftsmart.tom.core.TOMLayer;
@@ -341,6 +342,8 @@ public class ServerViewController extends ViewController {
             return;
         }
 
+        tomLayer.getReconfigurationLock().lock();
+
         int N = currentView.getProcesses().length;
         int max_faults = max_fault(N);
         int new_faults = Math.min(max_faults, currentView.getF() + K);
@@ -348,6 +351,25 @@ public class ServerViewController extends ViewController {
         View newView = new View(currentView.getId() + 1, currentView.getProcesses(), new_faults,
                 currentView.getAddresses(), currentView.isBFT(), new_delta);
         this.reconfigureTo(newView);
+        // lr: this is needed to fix a bug TODO think about the best location to run this
+        AwareController.getInstance(this, tomLayer.execManager).setCurrent(newView.getWeightConfiguration());
+        tomLayer.getReconfigurationLock().unlock();
+    }
+    public void switchToBackupConfig() {
+        System.out.println("================== SWITCH to BACKUP ==================");
+        if (currentView.isSaferConfig()) {
+            return;
+        }
+        tomLayer.getReconfigurationLock().lock();
+        View currentView = this.getCurrentView();
+
+        int N = currentView.getProcesses().length;
+        int max_faults = max_fault(N);
+        int new_delta = calculateDelta(N, max_faults);
+        View newView = new View(currentView.getId() + 1, currentView.getProcesses(), max_faults,
+                currentView.getAddresses(), currentView.isBFT(), new_delta);
+        this.reconfigureTo(newView);
+        tomLayer.getReconfigurationLock().unlock();
     }
 
     public View nextFasterConfig() {
@@ -366,12 +388,16 @@ public class ServerViewController extends ViewController {
 
     public void switchToFasterConfig() {
         System.out.println("================== SWITCH to FAST ==================");
+        tomLayer.getReconfigurationLock().lock();
         View currentView = this.getCurrentView();
         if (currentView.isFastestConfig())
             return;
 
         View newView = this.nextFasterConfig();
         this.reconfigureTo(newView);
+        // lr: this is needed to fix a bug TODO think about the best location to run this
+        AwareController.getInstance(this, tomLayer.execManager).setCurrent(newView.getWeightConfiguration());
+        tomLayer.getReconfigurationLock().unlock();
     }
 
     public boolean inBackup() {

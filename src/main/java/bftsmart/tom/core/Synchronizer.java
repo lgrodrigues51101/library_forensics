@@ -260,7 +260,8 @@ public class Synchronizer {
 
             lcManager.addCollect(regency, signedCollect);
 
-            int bizantineQuorum = (controller.getCurrentViewN() + controller.getCurrentViewF()) / 2;
+            // lr: does this need to also use T instead of f?
+            int bizantineQuorum = (controller.getCurrentViewN() + controller.getCurrentView().getT()) / 2;
             int cftQuorum = (controller.getCurrentViewN()) / 2;
 
             // Did I already got messages from a Byzantine/Crash quorum,

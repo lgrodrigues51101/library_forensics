@@ -119,4 +119,17 @@ public class RequestList extends LinkedList<TOMMessage> {
         }
         return false;
     }
+
+    @Override
+    public Object clone() {
+        RequestList ret = new RequestList(maxSize);
+        for (TOMMessage msg : this) {
+            try {
+                ret.add((TOMMessage) msg.clone());
+            } catch (CloneNotSupportedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return ret;
+    }
 }

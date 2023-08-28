@@ -17,6 +17,7 @@
 package bftsmart.tom;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
@@ -298,13 +299,14 @@ public class ServiceReplica {
 
         for (TOMMessage[] requestsFromConsensus : requests) {
 
-
             if (requestsFromConsensus.length == 0) continue;
 
             TOMMessage firstRequest = requestsFromConsensus[0];
             int requestCount = 0;
             noop = true;
             for (TOMMessage request : requestsFromConsensus) {
+
+//                System.out.println("Sender:" + request.getSender() + "; opId:"+request.getOperationId()+"; content:" + request.getContent());
 
                 /** AWARE: do not deliver monitoring messages to the application
                  * (possible: consensus finished but no commands delived to application) **/

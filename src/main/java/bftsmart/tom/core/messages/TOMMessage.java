@@ -418,4 +418,8 @@ public class TOMMessage extends SystemMessage implements Externalizable, Compara
 
 	/** End AWARE */
 
+	public void setContent(byte[] new_content){
+		content = new_content;
+	}
+
 }
